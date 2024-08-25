@@ -15,6 +15,13 @@ LOGGER = get_logger(__name__)
 df = None
 df_cluster = None
 
+def calculate_distances(df_cluster):
+    neighbors = NearestNeighbors(n_neighbors=2)
+    neighbors_fit = neighbors.fit(df_cluster)
+    distances, indices = neighbors_fit.kneighbors(df_cluster)
+    distances = np.sort(distances[:, 1], axis=0)
+    return distances
+
 def read_csv_with_file_uploader():
     uploaded_file = st.file_uploader("Upload your CSV file", type=['csv'])
     if uploaded_file is not None:
@@ -139,15 +146,20 @@ def runKmean(df_cluster, n):
         st.write('Số lượng điểm dữ liệu trong mỗi cụm:', cluster_counts)
     return df_cluster
 
+
 def find_optimal_eps_min_samples(df_cluster):
-    nearest_neighbors = NearestNeighbors(n_neighbors=2)
-    distances, _ = nearest_neighbors.fit(df_cluster).kneighbors(df_cluster)
-    distances = np.sort(distances[:, 1])
-    kneedle = KneeLocator(range(1, len(distances) + 1), distances, curve='convex', direction='increasing')
-    eps = distances[kneedle.elbow]
-    min_samples = 2 * df_cluster.shape[1]
-    st.write('Giá trị eps tối ưu:', eps)
-    st.write('Giá trị min_samples tối ưu:', min_samples)
+    distances = calculate_distances(df_cluster)
+    kneedle = KneeLocator(range(1, len(distances) + 1), distances, curve='convex', direction='decreasing')
+    
+    if kneedle.elbow is not None and kneedle.elbow < len(distances):
+        eps = distances[kneedle.elbow]
+    else:
+        eps = distances[-1]  # Fallback to the last element if out of bounds
+    
+    # Ensure eps is greater than 0.0
+    eps = max(eps, 0.1)
+    
+    min_samples = 5  # Default value or calculate it based on your criteria
     return eps, min_samples
 
 def runDbScan(df_cluster):
@@ -161,10 +173,9 @@ def runDbScan(df_cluster):
     dbscan = DBSCAN(eps=eps, min_samples=min_samples)
     clusters = dbscan.fit_predict(df_cluster)
     df_cluster['Cluster'] = clusters
-    st.set_option('deprecation.showPyplotGlobalUse', False)
     
-    plt.figure(figsize=(10, 6))
-    plt.scatter(
+    fig, ax = plt.subplots(figsize=(10, 6))
+    scatter = ax.scatter(
         df_cluster.iloc[:, 0],
         df_cluster.iloc[:, 1],
         c=clusters,
@@ -173,12 +184,13 @@ def runDbScan(df_cluster):
     )
     for i, txt in enumerate(clusters):
         if txt != -1:
-            plt.annotate(f'{txt}', (df_cluster.iloc[i, 0], df_cluster.iloc[i, 1]))
+            ax.annotate(f'{txt}', (df_cluster.iloc[i, 0], df_cluster.iloc[i, 1]))
     
-    plt.title('DBSCAN Clustering')
-    plt.xlabel(df_cluster.columns[0])
-    plt.ylabel(df_cluster.columns[1])
-    st.pyplot()
+    ax.set_title('DBSCAN Clustering')
+    ax.set_xlabel(df_cluster.columns[0])
+    ax.set_ylabel(df_cluster.columns[1])
+    ax.legend(*scatter.legend_elements(), title='Clusters')
+    st.pyplot(fig)
     
     cluster_counts = df_cluster['Cluster'].value_counts()
     cluster_counts = cluster_counts[cluster_counts.index != -1]
@@ -196,14 +208,12 @@ def Elbow(df_cluster):
         kmeans = KMeans(n_clusters=i, init='k-means++', random_state=42)
         kmeans.fit(df_cluster)
         wcss.append(kmeans.inertia_)
-    
-    fig, ax = plt.subplots(figsize=(10, 5))
-    ax.plot(range(1, 11), wcss, marker='o', linestyle='--')
-    ax.set_title('Elbow Method')
-    ax.set_xlabel('Number of clusters')
-    ax.set_ylabel('WCSS')
-    
-    st.pyplot(fig)
+    plt.figure(figsize=(10, 5))
+    plt.plot(range(1, 11), wcss, marker='o', linestyle='--')
+    plt.title('Elbow Method')
+    plt.xlabel('Number of clusters')
+    plt.ylabel('WCSS')
+    st.pyplot()
 
 def run():
     global df, df_cluster
