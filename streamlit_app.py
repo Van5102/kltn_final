@@ -61,7 +61,6 @@ def export_clustered_data():
 
 def runKmean(df_cluster, n):
     st.title('Biểu đồ phân cụm')
-    
     if df_cluster is not None:
         kmeans = KMeans(n_clusters=n, init='k-means++', max_iter=300, n_init=10)
         clusters = kmeans.fit_predict(df_cluster)
@@ -69,7 +68,7 @@ def runKmean(df_cluster, n):
         centroids = kmeans.cluster_centers_
         cluster_counts = df_cluster['Cluster'].value_counts()
 
-        if df_cluster.shape[1] == 3:
+        if df_cluster.shape[1] > 2:
             # Create a 3D scatter plot of the clusters
             fig = go.Figure()
             colors = px.colors.qualitative.Plotly
@@ -113,8 +112,7 @@ def runKmean(df_cluster, n):
             )
             
             st.plotly_chart(fig)
-        
-        elif df_cluster.shape[1] == 2:
+        else:
             # Create a 2D scatter plot for 2D data
             plt.figure(figsize=(10, 6))
             scatter = plt.scatter(
@@ -138,11 +136,7 @@ def runKmean(df_cluster, n):
             plt.legend(*scatter.legend_elements(), title='Clusters')
             st.pyplot()
         
-        else:
-            st.error("Dữ liệu không có đủ 2 hoặc 3 chiều để tạo biểu đồ.")
-        
         st.write('Số lượng điểm dữ liệu trong mỗi cụm:', cluster_counts)
-    
     return df_cluster
 
 def find_optimal_eps_min_samples(df_cluster):
@@ -202,12 +196,14 @@ def Elbow(df_cluster):
         kmeans = KMeans(n_clusters=i, init='k-means++', random_state=42)
         kmeans.fit(df_cluster)
         wcss.append(kmeans.inertia_)
-    plt.figure(figsize=(10, 5))
-    plt.plot(range(1, 11), wcss, marker='o', linestyle='--')
-    plt.title('Elbow Method')
-    plt.xlabel('Number of clusters')
-    plt.ylabel('WCSS')
-    st.pyplot()
+    
+    fig, ax = plt.subplots(figsize=(10, 5))
+    ax.plot(range(1, 11), wcss, marker='o', linestyle='--')
+    ax.set_title('Elbow Method')
+    ax.set_xlabel('Number of clusters')
+    ax.set_ylabel('WCSS')
+    
+    st.pyplot(fig)
 
 def run():
     global df, df_cluster
