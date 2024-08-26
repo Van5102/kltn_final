@@ -10,6 +10,9 @@ from sklearn.cluster import DBSCAN
 import matplotlib.pyplot as plt
 import plotly.graph_objs as go
 from streamlit.logger import get_logger
+from sklearn.metrics import silhouette_score
+from sklearn.neighbors import NearestNeighbors
+from kneed import KneeLocator
 
 LOGGER = get_logger(__name__)
 df_cluster = None
@@ -173,22 +176,41 @@ def runKmean(df_cluster, n):
 
 # Dựa theo dữ liệu đầu vào, phân tích và đưa ra giá trị eps và min_samples tối ưu
 def find_optimal_eps_min_samples(df_cluster):
-    from sklearn.neighbors import NearestNeighbors
-    from kneed import KneeLocator
-
     # Tìm số lượng hàng xóm gần nhất cho mỗi điểm dữ liệu
     nearest_neighbors = NearestNeighbors(n_neighbors=2)
     neighbors = nearest_neighbors.fit(df_cluster)
     distances, indices = neighbors.kneighbors(df_cluster)
     distances = np.sort(distances, axis=0)
     distances = distances[:, 1]
-    # Tìm giá trị eps tối ưu
+
+    # Tìm giá trị eps tối ưu bằng cách xác định "elbow"
     kneedle = KneeLocator(
         range(1, len(distances) + 1), distances, curve='convex', direction='increasing'
     )
-    eps = distances[kneedle.elbow]
+    
+    # Kiểm tra nếu kneedle.elbow là hợp lệ và nằm trong khoảng của distances
+    if kneedle.elbow is not None:
+        eps = distances[kneedle.elbow]
+    else:
+        eps = np.median(distances)  # Nếu không tìm thấy elbow, dùng giá trị trung bình của khoảng cách
+
+    # Kiểm tra và điều chỉnh eps nếu cần
+    if eps <= 0.0:
+        eps = 0.1  # Sử dụng một giá trị nhỏ hơn nhưng hợp lệ nếu eps <= 0
+
     # Tìm giá trị min_samples tối ưu
     min_samples = 2 * df_cluster.shape[1]
+
+    # Áp dụng DBSCAN với các giá trị eps và min_samples tìm được
+    dbscan_model = DBSCAN(eps=float(eps), min_samples=min_samples)
+    labels = dbscan_model.fit_predict(df_cluster)
+
+    # Đánh giá chất lượng của clustering bằng điểm silhouette
+    if len(set(labels)) > 1:
+        silhouette_avg = silhouette_score(df_cluster, labels)
+    else:
+        silhouette_avg = -1  # Trường hợp tất cả các điểm dữ liệu đều vào cùng một cluster hoặc bị coi là nhiễu
+
     st.write('Giá trị eps tối ưu:', eps)
     st.write('Giá trị min_samples tối ưu:', min_samples)
     return eps, min_samples
